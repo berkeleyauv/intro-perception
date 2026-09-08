@@ -10,7 +10,7 @@ their changes in `intro_perception/`, not inside the submodule.
 ## Clone and set up
 
 ```bash
-git clone --recurse-submodules <REPOSITORY_URL>
+git clone --recurse-submodules https://github.com/berkeleyauv/intro-perception.git
 cd intro_perception
 ./scripts/setup.sh
 source .venv/bin/activate
