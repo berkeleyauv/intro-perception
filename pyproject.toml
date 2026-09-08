@@ -15,6 +15,11 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8"]
 
+[project.scripts]
+intro-perception-run = "intro_perception.run:main"
+intro-perception-vis = "intro_perception.visualize:main"
+intro-perception-evaluate = "intro_perception.evaluate:main"
+
 [tool.setuptools.packages.find]
 include = ["intro_perception*"]
 

@@ -2,6 +2,11 @@ import cv2 as cv
 import numpy as np
 
 from intro_perception.perceiver import IntroGatePerceiver
+from perception.tasks.registry import get_perceiver
+
+
+def test_intro_perceiver_uses_production_registry():
+    assert get_perceiver("gate", "intro") is IntroGatePerceiver
 
 
 def test_baseline_finds_two_orange_posts():

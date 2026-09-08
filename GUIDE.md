@@ -18,10 +18,18 @@ Coordinates are normalized so `(0, 0)` is the top-left of the image and
 - Image/video loading and annotated output.
 - JSONL prediction output.
 - A small evaluator and public tests.
-- The production `perception` package as a pinned submodule.
+- The production `perception` package as a pinned, read-only submodule.
+- Registration as the production-style `gate/intro` algorithm.
+- The production visualizer for inspecting debug frames and comparing against
+  an existing gate algorithm.
 
 The provided system should run before you change any code. Record its metrics
 and save one failure example; that is your baseline.
+
+Use `intro-perception-vis` during development. This deliberately exercises the
+same `TaskPerceiver`, registry, and visualization workflow used by production
+algorithms. Use `intro-perception-run` when you need reproducible JSONL output
+for the project evaluator.
 
 ## Milestones
 
@@ -55,6 +63,8 @@ and save one failure example; that is your baseline.
 ## Constraints
 
 - Use the `GateEstimate` output contract unchanged.
+- Keep the `TaskPerceiver.analyze` interface and `gate/intro` registration.
+- Treat the `perception/` submodule as read-only student infrastructure.
 - Do not hard-code answers for individual frames or filenames.
 - The estimator must run offline on a normal laptop.
 - A learned detector is optional, not required.

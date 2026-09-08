@@ -6,11 +6,13 @@ import cv2 as cv
 import numpy as np
 
 from perception.tasks.TaskPerceiver import TaskPerceiver
+from perception.tasks.registry import register_perceiver
 
 from intro_perception.tracker import GateTracker
 from intro_perception.types import GateEstimate
 
 
+@register_perceiver(task="gate", algo="intro")
 class IntroGatePerceiver(TaskPerceiver):
     """Detect two orange vertical posts and track their midpoint."""
 
