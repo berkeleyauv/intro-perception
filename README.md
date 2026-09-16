@@ -1,67 +1,43 @@
 # Berkeley AUV Perception Intro Project
 
-Build a gate detector and temporal tracker that remains useful when underwater
-video becomes noisy, blurred, or briefly occluded.
+Build two qualification-gate detectors from supplied underwater videos: a
+classical OpenCV pipeline and a fine-tuned YOLO model. Both methods return the
+same gate box, center, confidence, and view orientation (`left`, `head_on`, or
+`right`) so their accuracy, speed, and failure modes can be compared fairly.
 
-This repository contains the assignment scaffold. The production perception
-package is pinned as a Git submodule under `perception/`. The student algorithm
-uses its `TaskPerceiver` interface, algorithm registry, and visualizer, while
-student-owned code stays in `intro_perception/`.
-
-## Clone and set up
+## Start here
 
 ```bash
 git clone --recurse-submodules https://github.com/berkeleyauv/intro-perception.git
-cd intro_perception
+cd intro-perception
+git switch -c <your-name>/perception-intro
 ./scripts/setup.sh
 source .venv/bin/activate
-```
-
-If the repository was cloned without submodules:
-
-```bash
-git submodule update --init --recursive
-```
-
-Run the public tests:
-
-```bash
 ./scripts/test.sh
 ```
 
-Run the baseline on an image or video:
+The production `perception/` repository is a pinned, read-only submodule.
+Student code belongs in `intro_perception/`. Follow [GUIDE.md](GUIDE.md) for the
+2–3 week milestone sequence.
+
+## Core commands
 
 ```bash
-python -m intro_perception.run --data path/to/video.mp4 --output output
+# Extract and label roughly 180 frames from at least three videos.
+intro-perception-data extract path/to/videos --output data/working
+intro-perception-data annotate --images data/working
+intro-perception-data build --images data/working --output data/generated
+
+# Install the ML dependencies and train the nano model.
+./scripts/setup.sh --yolo
+source .venv/bin/activate
+intro-perception-train
+
+# Compare both methods on held-out videos.
+intro-perception-run --data path/to/held-out-videos --method both --output output
+intro-perception-evaluate --truth data/generated/truth_test.jsonl \
+  --predictions output/predictions_yolo.jsonl
 ```
 
-Run it through the production perception visualizer:
-
-```bash
-intro-perception-vis --data path/to/video.mp4
-```
-
-The implementation is registered as `gate/intro`, just like a production
-algorithm. To compare it against an existing production algorithm:
-
-```bash
-intro-perception-vis --data path/to/video.mp4 --compare segmentation_a
-```
-
-The baseline is intentionally weak but complete. Read [GUIDE.md](GUIDE.md)
-for the milestones and [RUBRIC.md](RUBRIC.md) for evaluation criteria.
-
-## Student-owned files
-
-The main implementation lives in:
-
-```text
-intro_perception/perceiver.py
-intro_perception/tracker.py
-```
-
-You may add supporting modules and tests. Treat `perception/` as a read-only
-dependency: use its APIs and tools, but do not edit it unless a mentor
-explicitly asks you to test a production-package change. After the project, a
-strong solution can be migrated into the production repository in a separate
-PR.
+Raw videos, extracted frames, generated datasets, model weights, and run
+artifacts are intentionally ignored by Git.

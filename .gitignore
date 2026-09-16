@@ -5,3 +5,7 @@ __pycache__/
 *.egg-info/
 output/
 data/private/
+data/working/
+data/generated/
+artifacts/
+*.pt

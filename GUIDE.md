@@ -1,82 +1,80 @@
 # Project Guide
 
-## Goal
+## Output contract
 
-Given an image or video containing a qualification gate, publish one structured
-estimate per frame and create an annotated debug video. The estimator should be
-stable across lighting variation, false contours, motion blur, and short
-occlusions.
+Every frame returns `GateEstimate`: visibility, confidence, normalized center,
+normalized full-gate bounding box, and one of `left`, `head_on`, `right`, or
+`null` when no gate is visible. Do not change this contract.
 
-The required output type is `GateEstimate` in `intro_perception/types.py`.
-Coordinates are normalized so `(0, 0)` is the top-left of the image and
-`(1, 1)` is the bottom-right.
+Orientation describes the viewing angle: `left` means the gate's right side
+appears closer, `head_on` means both posts have similar perspective, and
+`right` means the left side appears closer. Skip genuinely ambiguous frames
+rather than inventing labels.
 
-## What is provided
+## Milestone 0: Workflow and baseline
 
-- A color-threshold baseline detector.
-- A simple exponential-moving-average tracker.
-- Image/video loading and annotated output.
-- JSONL prediction output.
-- A small evaluator and public tests.
-- The production `perception` package as a pinned, read-only submodule.
-- Registration as the production-style `gate/intro` algorithm.
-- The production visualizer for inspecting debug frames and comparing against
-  an existing gate algorithm.
+Clone recursively, work on a feature branch, create the environment, and run
+the tests. Run `intro-perception-run --method classical` on every supplied clip.
+Save three different baseline failures and commit one regression test.
 
-The provided system should run before you change any code. Record its metrics
-and save one failure example; that is your baseline.
+Use the production visualizer when developing the classical method:
 
-Use `intro-perception-vis` during development. This deliberately exercises the
-same `TaskPerceiver`, registry, and visualization workflow used by production
-algorithms. Use `intro-perception-run` when you need reproducible JSONL output
-for the project evaluator.
+```bash
+intro-perception-vis --data clip.mp4 --algo intro_classical \
+  --compare segmentation_a
+```
 
-## Milestones
+## Milestone 1: Dataset
 
-### 1. Baseline and failure analysis
+Extract 60 evenly spaced frames from each of at least three different videos.
+The local annotation tool opens each image: draw one box around the entire gate,
+then enter `l`, `h`, or `r`. Enter `s` to exclude an ambiguous view, or cancel
+the box for a true no-gate frame.
 
-- Run the starter on every public clip.
-- Identify at least three distinct failure modes.
-- Add a regression test for one failure.
+The build command validates every label and assigns whole source videos to
+60/20/20 train/validation/test splits. Adjacent frames from the same video must
+never cross splits. Review the generated manifest and class balance before
+training.
 
-### 2. Single-frame detection
+## Milestone 2: Classical CV
 
-- Improve gate candidate generation and rejection.
-- Return a meaningful confidence value rather than a fixed value.
-- Avoid false detections when fewer than two plausible posts are visible.
-- Preserve useful intermediate images in debug mode.
+Improve `ClassicalGatePerceiver`. A strong solution normally includes lighting
+normalization, color or brightness segmentation, morphology, geometric
+candidate filtering, post pairing, a calibrated confidence score, and an
+orientation cue based on the relative appearance of the posts.
 
-### 3. Temporal tracking
+Keep useful intermediate masks in debug output. Return invisible rather than a
+confident guess when two plausible posts cannot be established.
 
-- Reduce frame-to-frame center jitter.
-- Recover after short occlusions without locking onto a distractor.
-- Reset after a sufficiently long loss.
-- Document the state maintained between frames.
+## Milestone 3: YOLO
 
-### 4. Evaluation and communication
+Re-run setup with `--yolo`, then train the default pretrained YOLO26 nano model
+for 30 epochs at 640 px. The three detection classes are `gate_left`,
+`gate_head_on`, and `gate_right`; each box covers the complete gate.
 
-- Run the public evaluator.
-- Produce an annotated output video.
-- Explain one design tradeoff using measured evidence.
-- Add tests covering your tracker and confidence behavior.
+Training automatically selects CUDA, Apple MPS, or CPU and copies the best
+weights to `artifacts/yolo/best.pt`. Machines that cannot train locally may use
+`notebooks/train_colab.ipynb` with the same data, model, image size, and epochs.
+Do not commit weights.
 
-## Constraints
+## Milestone 4: Comparison
 
-- Use the `GateEstimate` output contract unchanged.
-- Keep the `TaskPerceiver.analyze` interface and `gate/intro` registration.
-- Treat the `perception/` submodule as read-only student infrastructure.
-- Do not hard-code answers for individual frames or filenames.
-- The estimator must run offline on a normal laptop.
-- A learned detector is optional, not required.
-- The program must handle an empty or unreadable input with a clear error.
+Run both methods on every held-out source video. Report IoU@0.50 precision and
+recall, mAP50, normalized center error, orientation macro-F1, the confusion
+matrix, and FPS. Include the side-by-side video and discuss:
+
+- three failure modes;
+- the accuracy/speed tradeoff;
+- how training-data coverage affects YOLO;
+- where the classical assumptions fail;
+- which method you would deploy and what you would improve next.
 
 ## Submission
 
-Push all work to your assigned branch and open a draft pull request against
-`main`. In the PR description include:
+Open one draft PR against `main` with at least three meaningful commits. Include
+clean setup commands, dataset counts by split/class, reproducible training
+arguments, both metric reports, annotated video, known limitations, and each
+member's contribution.
 
-- Setup and run commands.
-- Baseline and final metrics.
-- A link to or attachment of the annotated video.
-- Known failure cases.
-- A short description of each member's contribution.
+Temporal tracking or a YOLO-box-plus-classical-orientation fusion is an optional
+extension only after the required comparison works.

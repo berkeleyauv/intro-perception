@@ -14,11 +14,14 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+yolo = ["ultralytics==8.4.104"]
 
 [project.scripts]
 intro-perception-run = "intro_perception.run:main"
 intro-perception-vis = "intro_perception.visualize:main"
 intro-perception-evaluate = "intro_perception.evaluate:main"
+intro-perception-data = "intro_perception.data_tools:main"
+intro-perception-train = "intro_perception.train:main"
 
 [tool.setuptools.packages.find]
 include = ["intro_perception*"]

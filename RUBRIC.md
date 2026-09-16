@@ -2,12 +2,12 @@
 
 | Area | Weight | Evidence |
 |---|---:|---|
-| Single-frame detection | 25% | Center accuracy, precision/recall, difficult frames |
-| Temporal behavior | 25% | Jitter, occlusion recovery, clean reset after loss |
-| Confidence and failure handling | 15% | Confidence calibration and safe invisible outputs |
-| Evaluation and debugging | 15% | Reproducible metrics and useful annotated frames |
-| Code quality and tests | 15% | Readable decomposition, tests, no hard-coded cases |
-| Communication | 5% | PR explanation, failure analysis, demo |
+| YOLO pipeline | 25% | Valid data, reproducible training, held-out performance |
+| Classical pipeline | 25% | Segmentation, geometry, confidence, difficult frames |
+| Orientation quality | 15% | Macro-F1, confusion matrix, defensible cues |
+| Evaluation and analysis | 15% | Comparable metrics, speed, failure analysis |
+| Git, tests, and code | 15% | Feature branch, meaningful commits, regression tests |
+| Demo and report | 5% | Side-by-side video, commands, limitations |
 
-Correct behavior on unseen footage matters more than tuning exclusively for
-the public examples.
+Staff evaluation includes an unreleased clip. Hard-coding filenames, frames, or
+answers receives no detector-performance credit.
