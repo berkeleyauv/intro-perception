@@ -83,13 +83,9 @@ def main():
                 streams[name].write(json.dumps(record) + "\n")
                 annotated.append(debug_frames[0])
             canvas = cv.vconcat(annotated) if len(annotated) > 1 else annotated[0]
-            if writer is None:
-                height, width = canvas.shape[:2]
-                writer = cv.VideoWriter(
-                    str(args.output / "comparison.mp4"),
-                    cv.VideoWriter_fourcc(*"mp4v"), 30.0, (width, height)
-                )
-            writer.write(canvas)
+            
+            out_path = args.output / f"annotated_{source_video}"
+            cv.imwrite(str(out_path), canvas)
     finally:
         for stream in streams.values():
             stream.close()

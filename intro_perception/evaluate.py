@@ -2,14 +2,51 @@
 
 from __future__ import annotations
 
+import cv2 as cv
 import argparse
 import json
 import math
 from pathlib import Path
+from intro_perception.classical import ClassicalGatePerceiver
+from intro_perception.yolo import YoloGatePerceiver
 
 
 ORIENTATIONS = ("left", "head_on", "right")
 
+def evaluate_test_set(test_dir: Path, model_path: str):
+    classical = ClassicalGatePerceiver()
+    yolo = YoloGatePerceiver(model_path)
+    
+    test_images = list((test_dir / "images").glob("*.jpg"))
+    c_preds, y_preds, truth = {}, {}, {}
+    
+    for img_path in test_images:
+        frame = cv.imread(str(img_path))
+        frame_id = img_path.stem
+        
+        c_est = classical.analyze(frame, debug=False)
+        y_est = yolo.analyze(frame, debug=False)
+        c_preds[frame_id] = c_est.to_dict()
+        y_preds[frame_id] = y_est.to_dict()
+        
+        label_path = test_dir / "labels" / f"{frame_id}.txt"
+        if label_path.exists() and label_path.read_text().strip():
+            parts = label_path.read_text().strip().split()
+            class_id, cx, cy, w, h = map(float, parts)
+            truth[frame_id] = {
+                "visible": True,
+                "orientation": ORIENTATIONS[int(class_id)] if int(class_id) < len(ORIENTATIONS) else "head_on",
+                "center_x": cx, "center_y": cy,
+                "box_x": cx - w/2, "box_y": cy - h/2,
+                "box_width": w, "box_height": h
+            }
+        else:
+            truth[frame_id] = {"visible": False}
+            
+    print("Classical Scores:")
+    print(json.dumps(score_records(truth, c_preds), indent=2))
+    print("\nYOLO Scores:")
+    print(json.dumps(score_records(truth, y_preds), indent=2))
 
 def load_records(path):
     records = {}

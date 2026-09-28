@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import random
 
 import cv2 as cv
 
@@ -13,6 +14,32 @@ import cv2 as cv
 ORIENTATIONS = ("gate_left", "gate_head_on", "gate_right")
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
 
+def split_dataset(data_dir: Path, output_dir: Path, train_ratio=0.8, val_ratio=0.1, seed=42):
+    random.seed(seed)
+    images = list(data_dir.glob("*.jpg")) + list(data_dir.glob("*.png"))
+    random.shuffle(images)
+
+    n_total = len(images)
+    n_train = int(n_total * train_ratio)
+    n_val = int(n_total * val_ratio)
+
+    splits = {
+        "train": images[:n_train],
+        "val": images[n_train:n_train + n_val],
+        "test": images[n_train + n_val:]
+    }
+
+    for split, files in splits.items():
+        img_dir = output_dir / split / "images"
+        lbl_dir = output_dir / split / "labels"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        lbl_dir.mkdir(parents=True, exist_ok=True)
+
+        for img_path in files:
+            shutil.copy2(img_path, img_dir / img_path.name)
+            label_path = img_path.with_suffix(".txt")
+            if label_path.exists():
+                shutil.copy2(label_path, lbl_dir / label_path.name)
 
 def evenly_spaced_indices(frame_count, count):
     if frame_count <= 0 or count <= 0:
@@ -224,15 +251,24 @@ def video_paths(values):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    
     extract = commands.add_parser("extract")
     extract.add_argument("videos", nargs="+")
     extract.add_argument("--output", type=Path, default=Path("data/working"))
     extract.add_argument("--frames-per-video", type=int, default=60)
+    
     annotate = commands.add_parser("annotate")
     annotate.add_argument("--images", type=Path, default=Path("data/working"))
+    
     build = commands.add_parser("build")
     build.add_argument("--images", type=Path, default=Path("data/working"))
     build.add_argument("--output", type=Path, default=Path("data/generated"))
+
+    # ADDED: split subcommand
+    split_cmd = commands.add_parser("split")
+    split_cmd.add_argument("--data", type=Path, default=Path("data/raw"))
+    split_cmd.add_argument("--output", type=Path, default=Path("data/generated"))
+
     args = parser.parse_args()
 
     if args.command == "extract":
@@ -240,10 +276,12 @@ def main():
         print(f"extracted {len(written)} frames to {args.output}")
     elif args.command == "annotate":
         annotate_directory(args.images)
-    else:
+    elif args.command == "build":
         manifest = build_dataset(args.images, args.output)
         print(f"built {len(manifest)} examples in {args.output}")
-
+    elif args.command == "split":
+        split_dataset(args.data, args.output)
+        print(f"Split images from {args.data} into {args.output}")
 
 if __name__ == "__main__":
     main()
