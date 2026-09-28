@@ -23,8 +23,31 @@ class ClassicalGatePerceiver(TaskPerceiver):
         if frame is None or frame.size == 0:
             raise ValueError("frame must be a non-empty image")
 
+        if slider_vals is None:
+            slider_vals = {}
+
+        r_h_min = slider_vals.get("red_h_min", 0)
+        r_h_max = slider_vals.get("red_h_max", 10)
+        r_s_min = slider_vals.get("red_s_min", 100)
+        r_v_min = slider_vals.get("red_v_min", 100)
+        
+        b_v_max = slider_vals.get("black_v_max", 50)
+
         hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
-        mask = cv.inRange(hsv, np.array((5, 80, 80)), np.array((35, 255, 255)))
+        
+        red_mask = cv.inRange(
+            hsv, 
+            np.array((r_h_min, r_s_min, r_v_min)), 
+            np.array((r_h_max, 255, 255))
+        )
+        
+        black_mask = cv.inRange(
+            hsv, 
+            np.array((0, 0, 0)), 
+            np.array((180, 255, b_v_max))
+        )
+
+        mask = cv.bitwise_or(red_mask, black_mask)
         mask = cv.morphologyEx(mask, cv.MORPH_OPEN, np.ones((3, 3), np.uint8))
         contours = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)[-2]
 
@@ -34,10 +57,12 @@ class ClassicalGatePerceiver(TaskPerceiver):
             x, y, width, height = cv.boundingRect(contour)
             if area >= 30.0 and height >= max(10, int(width * 1.5)):
                 candidates.append((x, y, width, height, area))
+        
         candidates.sort(key=lambda candidate: candidate[-1], reverse=True)
         selected = sorted(candidates[:2], key=lambda candidate: candidate[0])
 
         estimate = GateEstimate.invisible()
+        
         if len(selected) == 2:
             left, right = selected
             left_center = left[0] + left[2] / 2.0
@@ -74,11 +99,12 @@ class ClassicalGatePerceiver(TaskPerceiver):
 
         if not debug:
             return estimate
+            
         annotated = annotate(frame, estimate)
         for x, y, width, height, _ in selected:
             cv.rectangle(annotated, (x, y), (x + width, y + height), (0, 255, 0), 2)
+            
         return estimate, [annotated, cv.cvtColor(mask, cv.COLOR_GRAY2BGR)]
-
 
 def annotate(frame, estimate, label_prefix="classical"):
     canvas = frame.copy()
