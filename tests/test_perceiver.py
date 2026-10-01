@@ -1,4 +1,4 @@
-from intro_perception.gate_helpers import make_gate_frame
+from gate_helpers import make_gate_frame
 
 from intro_perception.classical import ClassicalGatePerceiver
 from intro_perception.types import GateOrientation
