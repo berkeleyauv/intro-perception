@@ -130,7 +130,7 @@ def split_dataset(
     keep such groups out of the data or split them by hand.
     """
     
-        data_dir, output_dir = Path(data_dir), Path(output_dir)
+    data_dir, output_dir = Path(data_dir), Path(output_dir)
     images = list_images(data_dir)
  
     missing = [image.name for image in images if not image.with_suffix(".txt").exists()]
