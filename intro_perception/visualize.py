@@ -10,7 +10,8 @@ from intro_perception.production import prepare_production_namespace
 prepare_production_namespace()
 
 from intro_perception.classical import ClassicalGatePerceiver  # noqa: F401
-from intro_perception.yolo import YoloGatePerceiver  # noqa: F401from perception.tasks import registry
+from intro_perception.yolo import YoloGatePerceiver  # noqa: F401
+from perception.tasks import registry
 from perception.vis.vis import run
 
 
