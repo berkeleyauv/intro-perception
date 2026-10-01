@@ -1,4 +1,10 @@
-"""Intentionally weak classical gate detector baseline."""
+"""Intentionally weak classical gate detector baseline.
+
+Gate appearance (as seen facing the gate):
+ 
+* left post:  black on top, red on the bottom
+* right post: red on top, black on the bottom
+"""
 
 from __future__ import annotations
 
@@ -18,6 +24,16 @@ from intro_perception.types import GateEstimate, GateOrientation
 @register_perceiver(task="gate", algo="intro_classical")
 class ClassicalGatePerceiver(TaskPerceiver):
     """Find two vertical posts with fixed HSV thresholds."""
+
+    # ADDED: Default Slider Values
+    def __init__(self):
+        super().__init__(
+            red_h_min=((0, 180), 0),
+            red_h_max=((0, 180), 10),
+            red_s_min=((0, 255), 100),
+            red_v_min=((0, 255), 100),
+            black_v_max=((0, 255), 50),
+        )
 
     def analyze(self, frame: np.ndarray, debug: bool, slider_vals=None):
         if frame is None or frame.size == 0:
@@ -78,7 +94,7 @@ class ClassicalGatePerceiver(TaskPerceiver):
             x1 = min(left_post[0], right_post[0])
             y1 = min(left_post[1], right_post[1])
             x2 = max(left_post[0] + left_post[2], right_post[0] + right_post[2])
-            y2 = max(left_post[1] + left_post[3], right_post[0] + right_post[3])
+            y2 = max(left_post[1] + left_post[3], right_post[1] + right_post[3])
 
             left_center = left_post[0] + left_post[2] / 2.0
             right_center = right_post[0] + right_post[2] / 2.0
