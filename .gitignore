@@ -5,8 +5,8 @@ __pycache__/
 *.egg-info/
 .DS_Store
 output/
+data/raw
 data/private/
-data/working/
 data/generated/
 artifacts/
 *.pt
