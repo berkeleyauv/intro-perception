@@ -1,6 +1,6 @@
-"""Extract, annotate, validate, and build a local YOLO gate dataset.
+"""Label, split, and package a local YOLO gate dataset from still images.
 
-Workflow:
+Workflow (images only):
  
     intro-perception-data annotate --images data/raw
         draws boxes by hand and writes data/raw/<image>.txt next to each image
