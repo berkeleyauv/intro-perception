@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 import pytest
-from intro_perception.gate_helpers import write_labeled_image
+from gate_helpers import write_labeled_image
 
 from intro_perception import data_tools
 from intro_perception.data_tools import (
