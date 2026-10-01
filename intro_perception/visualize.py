@@ -14,7 +14,7 @@ from intro_perception.yolo import YoloGatePerceiver  # noqa: F401
 from perception.tasks import registry
 from perception.vis.vis import run
 
-VISUAlIZER_SUFFIXES = (".jpg", ".png")
+VISUALIZER_SUFFIXES = (".jpg", ".png")
 
 def data_sources(path):
     images = list_images(path)
