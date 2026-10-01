@@ -42,7 +42,7 @@ class ClassicalGatePerceiver(TaskPerceiver):
         if slider_vals is None:
             slider_vals = {}
 
-        # 1. Slider controls for HSV tuning
+        # Slider controls for HSV tuning
         r_h_min = slider_vals.get("red_h_min", 0)
         r_h_max = slider_vals.get("red_h_max", 10)
         r_s_min = slider_vals.get("red_s_min", 100)
@@ -52,7 +52,6 @@ class ClassicalGatePerceiver(TaskPerceiver):
 
         hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
         
-        # Intentional Flaw 1: Misses top-end Red (170-180 Hue range)
         red_mask = cv.inRange(
             hsv, 
             np.array((r_h_min, r_s_min, r_v_min)), 
@@ -66,8 +65,6 @@ class ClassicalGatePerceiver(TaskPerceiver):
             np.array((180, 255, b_v_max))
         )
 
-        # Intentional Flaw 2: Bitwise OR combines red & black into big blobs.
-        # This merges the center divider, top/bottom leg halves, and background shadows.
         combined_mask = cv.bitwise_or(red_mask, black_mask)
         combined_mask = cv.morphologyEx(combined_mask, cv.MORPH_OPEN, np.ones((3, 3), np.uint8))
         
@@ -87,7 +84,6 @@ class ClassicalGatePerceiver(TaskPerceiver):
 
         estimate = GateEstimate.invisible()
         
-        # Intentional Flaw 3: Fails completely if < 2 posts found (e.g. partial visibility)
         if len(selected) == 2:
             left_post, right_post = selected
             
@@ -99,8 +95,6 @@ class ClassicalGatePerceiver(TaskPerceiver):
             left_center = left_post[0] + left_post[2] / 2.0
             right_center = right_post[0] + right_post[2] / 2.0
 
-            # Intentional Flaw 4: Uses bounding-box width ratio for orientation 
-            # instead of inspecting top/bottom half colors (Red-Top vs Black-Top).
             ratio = right_post[2] / max(left_post[2], 1)
             if ratio > 1.12:
                 orientation = GateOrientation.LEFT
