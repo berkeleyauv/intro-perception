@@ -1,4 +1,17 @@
-"""Extract, annotate, validate, and build a local YOLO gate dataset."""
+"""Extract, annotate, validate, and build a local YOLO gate dataset.
+
+Workflow:
+ 
+    intro-perception-data annotate --images data/raw
+        draws boxes by hand and writes data/raw/<image>.txt next to each image
+    intro-perception-data split --data data/raw --output data/generated
+        copies labeled images into train/val/test and writes dataset.yaml
+ 
+Label files use the YOLO format, one line per image:
+``class center_x center_y width height`` with coordinates normalized to 0-1 and
+class 0/1/2 = gate_left / gate_head_on / gate_right. The box covers the whole
+gate. An *empty* label file means "no gate in this image".
+"""
 
 from __future__ import annotations
 
@@ -10,278 +23,214 @@ import random
 
 import cv2 as cv
 
+from intro_perception.images import list_images, read_image
 
 ORIENTATIONS = ("gate_left", "gate_head_on", "gate_right")
-VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
+SPLITS = ("train", "val", "test")
 
-def split_dataset(data_dir: Path, output_dir: Path, train_ratio=0.8, val_ratio=0.1, seed=42):
-    random.seed(seed)
-    images = list(data_dir.glob("*.jpg")) + list(data_dir.glob("*.png"))
-    random.shuffle(images)
+def parse_label(path):
+    """ Read a single YOLO label file
 
-    n_total = len(images)
-    n_train = int(n_total * train_ratio)
-    n_val = int(n_total * val_ratio)
+    Returns 'None' for an empty file, otherwise '(class_id, center_x, center_y, width, height)'
+    """
+    lines = [
+        line
+        for line in Path(path).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        return None
+    if len(lines) != 1:
+        raise ValueError(f"{path}: expected one gate box per image, found {len(lines)}")
+    parts = lines[0].split()
+    if len(parts) != 5:
+        raise ValueError(f"{path}: expected 'class cx cy w h', got {lines[0]!r}")
+    try:
+        class_id = int(parts[0])
+        center_x, center_y, width, height = (float(value) for value in parts[1:])
+    except ValueError:
+        raise ValueError(f"{path}: non-numeric label {lines[0]!r}") from None
+    if not 0 <= class_id < len(ORIENTATIONS):
+        raise ValueError(
+            f"{path}: class id must be 0-{len(ORIENTATIONS) - 1}, got {class_id}"
+        )
+    if width <= 0 or height <= 0 or not all(
+        0.0 <= value <= 1.0 for value in (center_x, center_y, width, height)
+    ):
+        raise ValueError(f"{path}: box values must be in 0-1 with a positive size")
+    return class_id, center_x, center_y, width, height
 
-    splits = {
-        "train": images[:n_train],
-        "val": images[n_train:n_train + n_val],
-        "test": images[n_train + n_val:]
-    }
-
-    for split, files in splits.items():
-        img_dir = output_dir / split / "images"
-        lbl_dir = output_dir / split / "labels"
-        img_dir.mkdir(parents=True, exist_ok=True)
-        lbl_dir.mkdir(parents=True, exist_ok=True)
-
-        for img_path in files:
-            shutil.copy2(img_path, img_dir / img_path.name)
-            label_path = img_path.with_suffix(".txt")
-            if label_path.exists():
-                shutil.copy2(label_path, lbl_dir / label_path.name)
-
-def evenly_spaced_indices(frame_count, count):
-    if frame_count <= 0 or count <= 0:
-        return []
-    count = min(frame_count, count)
-    if count == 1:
-        return [frame_count // 2]
-    return sorted({round(index * (frame_count - 1) / (count - 1)) for index in range(count)})
-
-
-def extract_videos(videos, output, frames_per_video=60):
-    output.mkdir(parents=True, exist_ok=True)
-    written = []
-    for video in videos:
-        capture = cv.VideoCapture(str(video))
-        if not capture.isOpened():
-            raise ValueError(f"could not open video: {video}")
-        frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
-        for frame_index in evenly_spaced_indices(frame_count, frames_per_video):
-            capture.set(cv.CAP_PROP_POS_FRAMES, frame_index)
-            ok, frame = capture.read()
-            if not ok:
-                continue
-            image_path = output / f"{video.stem}__{frame_index:06d}.jpg"
-            cv.imwrite(str(image_path), frame)
-            annotation = {
-                "source_video": video.name,
-                "frame_index": frame_index,
-                "visible": None,
-                "excluded": False,
-                "orientation": None,
-                "bbox_xywh_pixels": None,
-            }
-            image_path.with_suffix(".json").write_text(
-                json.dumps(annotation, indent=2) + "\n", encoding="utf-8"
-            )
-            written.append(image_path)
-        capture.release()
-    return written
-
-
-def validate_annotation(annotation, image_shape):
-    required = {"source_video", "frame_index", "visible"}
-    missing = required - annotation.keys()
-    if missing:
-        raise ValueError(f"missing fields: {sorted(missing)}")
-    if annotation.get("excluded", False):
-        return
-    if annotation["visible"] is None:
-        raise ValueError("frame has not been labeled")
-    if not annotation["visible"]:
-        return
-    if annotation.get("orientation") not in ORIENTATIONS:
-        raise ValueError(f"invalid orientation: {annotation.get('orientation')}")
-    bbox = annotation.get("bbox_xywh_pixels")
-    if not isinstance(bbox, list) or len(bbox) != 4:
-        raise ValueError("visible frame needs bbox_xywh_pixels [x, y, w, h]")
-    x, y, width, height = bbox
+def write_label(path, class_id, box_xywh_pixels, image_shape):
+    """Write a one-box YOLO label:
+    
+    - '(x, y, width, height)'
+    """
+    x, y, width, height = box_xywh_pixels
     image_height, image_width = image_shape[:2]
-    if width <= 0 or height <= 0 or x < 0 or y < 0:
-        raise ValueError("bounding box must have positive size and origin")
-    if x + width > image_width or y + height > image_height:
-        raise ValueError("bounding box extends outside image")
-
-
-def annotate_directory(images):
-    for image_path in sorted(images.glob("*.jpg")):
-        sidecar = image_path.with_suffix(".json")
-        annotation = json.loads(sidecar.read_text(encoding="utf-8"))
-        if annotation["visible"] is not None or annotation.get("excluded", False):
-            continue
-        frame = cv.imread(str(image_path))
-        print(f"\n{image_path.name}: draw the full gate, or cancel for no gate")
-        bbox = cv.selectROI("Gate annotation", frame, showCrosshair=True)
-        cv.destroyWindow("Gate annotation")
-        if bbox[2] == 0 or bbox[3] == 0:
-            annotation.update(visible=False, orientation=None, bbox_xywh_pixels=None)
-        else:
-            label = input("orientation [l]eft/[h]ead-on/[r]ight, [s]kip: ").strip().lower()
-            if label == "s":
-                annotation.update(
-                    excluded=True,
-                    visible=None,
-                    orientation=None,
-                    bbox_xywh_pixels=None,
-                )
-                sidecar.write_text(
-                    json.dumps(annotation, indent=2) + "\n", encoding="utf-8"
-                )
-                continue
-            mapping = {"l": "gate_left", "h": "gate_head_on", "r": "gate_right"}
-            if label not in mapping:
-                print("invalid label; leaving frame unfinished")
-                continue
-            annotation.update(
-                visible=True,
-                orientation=mapping[label],
-                bbox_xywh_pixels=[int(value) for value in bbox],
-            )
-        validate_annotation(annotation, frame.shape)
-        sidecar.write_text(json.dumps(annotation, indent=2) + "\n", encoding="utf-8")
-
-
-def split_sources(sources):
-    sources = sorted(set(sources))
-    if len(sources) < 3:
-        raise ValueError("at least three source videos are required for leakage-safe splits")
-    train_count = min(max(1, round(len(sources) * 0.6)), len(sources) - 2)
-    validation_count = max(1, round(len(sources) * 0.2))
-    validation_count = min(validation_count, len(sources) - train_count - 1)
-    train_end = train_count
-    val_end = train_count + validation_count
-    return {
-        "train": set(sources[:train_end]),
-        "val": set(sources[train_end:val_end]),
-        "test": set(sources[val_end:]),
-    }
-
-
-def build_dataset(images, output):
-    records = []
-    for image_path in sorted(images.glob("*.jpg")):
-        annotation_path = image_path.with_suffix(".json")
-        if not annotation_path.exists():
-            raise ValueError(f"missing annotation: {annotation_path}")
-        annotation = json.loads(annotation_path.read_text(encoding="utf-8"))
-        frame = cv.imread(str(image_path))
-        validate_annotation(annotation, frame.shape)
-        if annotation.get("excluded", False):
-            continue
-        records.append((image_path, frame.shape, annotation))
-
-    splits = split_sources(record[2]["source_video"] for record in records)
-    source_to_split = {
-        source: split for split, sources in splits.items() for source in sources
-    }
-    manifest = []
-    truth = []
-    class_ids = {name: index for index, name in enumerate(ORIENTATIONS)}
-    for image_path, shape, annotation in records:
-        split = source_to_split[annotation["source_video"]]
-        image_dir = output / "images" / split
-        label_dir = output / "labels" / split
-        image_dir.mkdir(parents=True, exist_ok=True)
-        label_dir.mkdir(parents=True, exist_ok=True)
-        destination = image_dir / image_path.name
-        shutil.copy2(image_path, destination)
-        label_path = label_dir / f"{image_path.stem}.txt"
-        label = ""
-        record = {
-            "frame_id": image_path.stem,
-            "source_video": annotation["source_video"],
-            "frame_index": annotation["frame_index"],
-            "split": split,
-            "visible": bool(annotation["visible"]),
-        }
-        if annotation["visible"]:
-            x, y, width, height = annotation["bbox_xywh_pixels"]
-            image_height, image_width = shape[:2]
-            center_x = (x + width / 2) / image_width
-            center_y = (y + height / 2) / image_height
-            box_width = width / image_width
-            box_height = height / image_height
-            class_id = class_ids[annotation["orientation"]]
-            label = f"{class_id} {center_x:.8f} {center_y:.8f} {box_width:.8f} {box_height:.8f}\n"
-            record.update(
-                orientation=annotation["orientation"].removeprefix("gate_"),
-                confidence=1.0,
-                center_x=center_x,
-                center_y=center_y,
-                box_x=x / image_width,
-                box_y=y / image_height,
-                box_width=box_width,
-                box_height=box_height,
-            )
-        label_path.write_text(label, encoding="utf-8")
-        manifest.append(record)
-        if split == "test":
-            truth.append(record)
-
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "dataset.yaml").write_text(
-        "path: .\ntrain: images/train\nval: images/val\ntest: images/test\n"
-        "names:\n  0: gate_left\n  1: gate_head_on\n  2: gate_right\n",
+    Path(path).write_text(
+        f"{class_id} {(x + width / 2) / image_width:.8f} "
+        f"{(y + height / 2) / image_height:.8f} "
+        f"{width / image_width:.8f} {height / image_height:.8f}\n",
         encoding="utf-8",
     )
-    for name, payload in (("manifest.jsonl", manifest), ("truth_test.jsonl", truth)):
-        with (output / name).open("w", encoding="utf-8") as stream:
-            for record in payload:
-                stream.write(json.dumps(record) + "\n")
-    return manifest
 
+def annotate_directory(images):
+    """Label every image that has no corresponding .txt yet
+    
+    Draw one box around the entire gate, then enter its orientation. Cancel the
+    box for a true no-gate image (an empty label file is written). Enter ``s``
+    to move an ambiguous image into ``<images>/excluded/`` so it is never
+    trained or scored on.
+    """
+    choices = {"l": 0, "h": 1, "r": 2}
+    for image_path in list_images(images):
+        label_path = image_path.with_suffix(".txt")
+        if label_path.exists():
+            continue
+        frame = read_image(image_path)
+        print(f"\n{image_path.name}: draw the full gate, or cancel for no gate")
+        x, y, width, height = cv.selectROI("Gate annotation", frame, showCrosshair=True)
+        cv.destroyWindow("Gate annotation")
+        if width == 0 or height == 0:
+            label_path.write_text("", encoding="utf-8")
+            continue
+        choice = input("orientation [l]eft/[h]ead-on/[r]ight, [s]kip: ").strip().lower()
+        if choice == "s":
+            excluded = image_path.parent / "excluded"
+            excluded.mkdir(exist_ok=True)
+            shutil.move(str(image_path), str(excluded / image_path.name))
+            continue
+        if choice not in choices:
+            print("invalid choice; leaving image unlabeled")
+            continue
+        write_label(
+            label_path,
+            choices[choice],
+            (int(x), int(y), int(width), int(height)),
+            frame.shape,
+        )
 
-def video_paths(values):
-    paths = []
-    for value in values:
-        path = Path(value)
-        if path.is_dir():
-            paths.extend(
-                item
-                for item in sorted(path.iterdir())
-                if item.suffix.lower() in VIDEO_SUFFIXES
-            )
-        else:
-            paths.append(path)
-    return paths
-
+def split_dataset(
+    data_dir: Path, 
+    output_dir: Path, 
+    train_ratio=0.8, 
+    val_ratio=0.1, 
+    seed=42,
+    overwrite=False
+):
+    """Split labeled images into train/val/test and write ``dataset.yaml``.
+ 
+    Every image needs a ``.txt`` label next to it (empty = no gate). Each split
+    gets at least one image, so at least three labeled images are required.
+    Images are shuffled with ``seed`` after sorting, so the split is
+    reproducible. Returns a per-split summary of image and class counts.
+ 
+    The split is random per image. If several images come from the same scene or
+    burst, near-duplicates can land in different splits and inflate your scores;
+    keep such groups out of the data or split them by hand.
+    """
+    
+        data_dir, output_dir = Path(data_dir), Path(output_dir)
+    images = list_images(data_dir)
+ 
+    missing = [image.name for image in images if not image.with_suffix(".txt").exists()]
+    if missing:
+        raise ValueError(
+            f"{len(missing)} image(s) have no .txt label (e.g. {', '.join(missing[:3])}); "
+            "run `intro-perception-data annotate`, or add an empty .txt for no-gate images"
+        )
+    labels = {image: parse_label(image.with_suffix(".txt")) for image in images}
+ 
+    total = len(images)
+    if total < 3:
+        raise ValueError("need at least 3 labeled images (one each for train, val, test)")
+    test_ratio = 1.0 - train_ratio - val_ratio
+    val_count = max(1, round(total * val_ratio))
+    test_count = max(1, round(total * test_ratio))
+    train_count = total - val_count - test_count
+    if train_count < 1:
+        raise ValueError("ratios leave no images for training")
+ 
+    existing = [
+        output_dir / split
+        for split in SPLITS
+        if (output_dir / split).exists() and any((output_dir / split).iterdir())
+    ]
+    if existing and not overwrite:
+        raise ValueError(
+            f"{output_dir} already has data splits; pass --overwrite to replace them "
+            "(stale files from an earlier split would leak between splits)"
+        )
+    for split in SPLITS:
+        shutil.rmtree(output_dir / split, ignore_errors=True)
+ 
+    shuffled = list(images)
+    random.Random(seed).shuffle(shuffled)
+    splits = {
+        "train": shuffled[:train_count],
+        "val": shuffled[train_count:train_count + val_count],
+        "test": shuffled[train_count + val_count:],
+    }
+ 
+    summary = {}
+    for split, files in splits.items():
+        image_dir = output_dir / split / "images"
+        label_dir = output_dir / split / "labels"
+        image_dir.mkdir(parents=True, exist_ok=True)
+        label_dir.mkdir(parents=True, exist_ok=True)
+        counts = {"images": len(files), "no_gate": 0, **{name: 0 for name in ORIENTATIONS}}
+        for image in files:
+            shutil.copy2(image, image_dir / image.name)
+            shutil.copy2(image.with_suffix(".txt"), label_dir / f"{image.stem}.txt")
+            parsed = labels[image]
+            if parsed is None:
+                counts["no_gate"] += 1
+            else:
+                counts[ORIENTATIONS[parsed[0]]] += 1
+        summary[split] = counts
+ 
+    # `path` is left out on purpose: Ultralytics then resolves the splits
+    # relative to this file instead of the current working directory.
+    (output_dir / "dataset.yaml").write_text(
+        "train: train/images\n"
+        "val: val/images\n"
+        "test: test/images\n"
+        "names:\n"
+        "  0: gate_left\n"
+        "  1: gate_head_on\n"
+        "  2: gate_right\n",
+        encoding="utf-8",
+    )
+    return summary
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    
-    extract = commands.add_parser("extract")
-    extract.add_argument("videos", nargs="+")
-    extract.add_argument("--output", type=Path, default=Path("data/working"))
-    extract.add_argument("--frames-per-video", type=int, default=60)
-    
-    annotate = commands.add_parser("annotate")
-    annotate.add_argument("--images", type=Path, default=Path("data/working"))
-    
-    build = commands.add_parser("build")
-    build.add_argument("--images", type=Path, default=Path("data/working"))
-    build.add_argument("--output", type=Path, default=Path("data/generated"))
-
-    # ADDED: split subcommand
-    split_cmd = commands.add_parser("split")
-    split_cmd.add_argument("--data", type=Path, default=Path("data/raw"))
-    split_cmd.add_argument("--output", type=Path, default=Path("data/generated"))
-
+ 
+    annotate = commands.add_parser("annotate", help="label images by drawing boxes")
+    annotate.add_argument("--images", type=Path, default=Path("data/raw"))
+ 
+    split = commands.add_parser("split", help="split labeled images into train/val/test")
+    split.add_argument("--data", type=Path, default=Path("data/raw"))
+    split.add_argument("--output", type=Path, default=Path("data/generated"))
+    split.add_argument("--seed", type=int, default=42)
+    split.add_argument("--overwrite", action="store_true")
+ 
     args = parser.parse_args()
-
-    if args.command == "extract":
-        written = extract_videos(video_paths(args.videos), args.output, args.frames_per_video)
-        print(f"extracted {len(written)} frames to {args.output}")
-    elif args.command == "annotate":
+ 
+    if args.command == "annotate":
         annotate_directory(args.images)
-    elif args.command == "build":
-        manifest = build_dataset(args.images, args.output)
-        print(f"built {len(manifest)} examples in {args.output}")
-    elif args.command == "split":
-        split_dataset(args.data, args.output)
-        print(f"Split images from {args.data} into {args.output}")
+    else:
+        summary = split_dataset(
+            args.data, args.output, seed=args.seed, overwrite=args.overwrite
+        )
+        print(f"wrote dataset to {args.output}")
+        for split_name, counts in summary.items():
+            detail = ", ".join(f"{name}={value}" for name, value in counts.items())
+            print(f"  {split_name}: {detail}")
+            for name in ORIENTATIONS:
+                if counts[name] == 0:
+                    print(f"    warning: {split_name} has no {name} images")
 
 if __name__ == "__main__":
     main()
