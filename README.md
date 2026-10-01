@@ -1,6 +1,6 @@
 # Berkeley AUV Perception Intro Project
 
-Build two qualification-gate detectors from supplied underwater videos: a
+Build two qualification-gate detectors from supplied underwater images: a
 classical OpenCV pipeline and a fine-tuned YOLO model. Both methods return the
 same gate box, center, confidence, and view orientation (`left`, `head_on`, or
 `right`) so their accuracy, speed, and failure modes can be compared fairly.
