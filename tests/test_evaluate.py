@@ -1,7 +1,7 @@
 import sys
 
 import pytest
-from intro_perception.gate_helpers import write_labeled_image
+from gate_helpers import write_labeled_image
 
 from intro_perception import evaluate
 from intro_perception.evaluate import (
