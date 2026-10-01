@@ -16,7 +16,6 @@ gate. An *empty* label file means "no gate in this image".
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import shutil
 import random
