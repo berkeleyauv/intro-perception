@@ -1,4 +1,10 @@
-"""Intentionally weak classical gate detector baseline."""
+"""Intentionally weak classical gate detector baseline.
+
+Gate appearance (as seen facing the gate):
+ 
+* left post:  black on top, red on the bottom
+* right post: red on top, black on the bottom
+"""
 
 from __future__ import annotations
 
@@ -17,37 +23,79 @@ from intro_perception.types import GateEstimate, GateOrientation
 
 @register_perceiver(task="gate", algo="intro_classical")
 class ClassicalGatePerceiver(TaskPerceiver):
-    """Find two orange vertical posts with fixed HSV thresholds."""
+    """Find two vertical posts with fixed HSV thresholds."""
+
+    # ADDED: Default Slider Values
+    def __init__(self):
+        super().__init__(
+            red_h_min=((0, 180), 0),
+            red_h_max=((0, 180), 10),
+            red_s_min=((0, 255), 100),
+            red_v_min=((0, 255), 100),
+            black_v_max=((0, 255), 50),
+        )
 
     def analyze(self, frame: np.ndarray, debug: bool, slider_vals=None):
         if frame is None or frame.size == 0:
             raise ValueError("frame must be a non-empty image")
 
+        if slider_vals is None:
+            slider_vals = {}
+
+        # Slider controls for HSV tuning
+        r_h_min = slider_vals.get("red_h_min", 0)
+        r_h_max = slider_vals.get("red_h_max", 10)
+        r_s_min = slider_vals.get("red_s_min", 100)
+        r_v_min = slider_vals.get("red_v_min", 100)
+        
+        b_v_max = slider_vals.get("black_v_max", 50)
+
         hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
-        mask = cv.inRange(hsv, np.array((5, 80, 80)), np.array((35, 255, 255)))
-        mask = cv.morphologyEx(mask, cv.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        contours = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)[-2]
+        
+        red_mask = cv.inRange(
+            hsv, 
+            np.array((r_h_min, r_s_min, r_v_min)), 
+            np.array((r_h_max, 255, 255))
+        )
+        
+        # Broad black mask
+        black_mask = cv.inRange(
+            hsv, 
+            np.array((0, 0, 0)), 
+            np.array((180, 255, b_v_max))
+        )
+
+        combined_mask = cv.bitwise_or(red_mask, black_mask)
+        combined_mask = cv.morphologyEx(combined_mask, cv.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        
+        contours = cv.findContours(combined_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)[-2]
 
         candidates = []
         for contour in contours:
             area = float(cv.contourArea(contour))
             x, y, width, height = cv.boundingRect(contour)
-            if area >= 30.0 and height >= max(10, int(width * 1.5)):
+            # Basic vertical aspect ratio check
+            if area >= 30.0 and height >= max(10, int(width * 1.2)):
                 candidates.append((x, y, width, height, area))
-        candidates.sort(key=lambda candidate: candidate[-1], reverse=True)
-        selected = sorted(candidates[:2], key=lambda candidate: candidate[0])
+        
+        # Sort by area and pick top 2
+        candidates.sort(key=lambda c: c[-1], reverse=True)
+        selected = sorted(candidates[:2], key=lambda c: c[0])
 
         estimate = GateEstimate.invisible()
+        
         if len(selected) == 2:
-            left, right = selected
-            left_center = left[0] + left[2] / 2.0
-            right_center = right[0] + right[2] / 2.0
-            x1 = min(left[0], right[0])
-            y1 = min(left[1], right[1])
-            x2 = max(left[0] + left[2], right[0] + right[2])
-            y2 = max(left[1] + left[3], right[1] + right[3])
+            left_post, right_post = selected
+            
+            x1 = min(left_post[0], right_post[0])
+            y1 = min(left_post[1], right_post[1])
+            x2 = max(left_post[0] + left_post[2], right_post[0] + right_post[2])
+            y2 = max(left_post[1] + left_post[3], right_post[1] + right_post[3])
 
-            ratio = right[2] / max(left[2], 1)
+            left_center = left_post[0] + left_post[2] / 2.0
+            right_center = right_post[0] + right_post[2] / 2.0
+
+            ratio = right_post[2] / max(left_post[2], 1)
             if ratio > 1.12:
                 orientation = GateOrientation.LEFT
             elif ratio < 1.0 / 1.12:
@@ -56,10 +104,9 @@ class ClassicalGatePerceiver(TaskPerceiver):
                 orientation = GateOrientation.HEAD_ON
 
             separation = abs(right_center - left_center) / frame.shape[1]
-            area_fraction = (left[-1] + right[-1]) / (
-                frame.shape[0] * frame.shape[1]
-            )
+            area_fraction = (left_post[-1] + right_post[-1]) / (frame.shape[0] * frame.shape[1])
             confidence = min(1.0, separation * 1.5 + area_fraction * 8.0)
+            
             estimate = GateEstimate(
                 True,
                 confidence,
@@ -74,11 +121,12 @@ class ClassicalGatePerceiver(TaskPerceiver):
 
         if not debug:
             return estimate
+            
         annotated = annotate(frame, estimate)
         for x, y, width, height, _ in selected:
             cv.rectangle(annotated, (x, y), (x + width, y + height), (0, 255, 0), 2)
-        return estimate, [annotated, cv.cvtColor(mask, cv.COLOR_GRAY2BGR)]
-
+            
+        return estimate, [annotated, cv.cvtColor(combined_mask, cv.COLOR_GRAY2BGR)]
 
 def annotate(frame, estimate, label_prefix="classical"):
     canvas = frame.copy()
