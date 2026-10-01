@@ -1,9 +1,0 @@
-path: ../data
-train: train/images
-val: val/images
-test: test/images
-
-names:
-  0: gate_left
-  1: gate_head_on
-  2: gate_right
