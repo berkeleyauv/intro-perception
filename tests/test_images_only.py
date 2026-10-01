@@ -4,7 +4,7 @@ import sys
 import cv2 as cv
 import numpy as np
 import pytest
-from intro_perception.gate_helpers import make_gate_frame
+from gate_helpers import make_gate_frame
 
 from intro_perception import run, visualize
 from intro_perception.images import list_images
