@@ -1,5 +1,7 @@
 # Project Guide
 
+This project works on still images only (`.jpg`, `.jpeg`, `.png`).
+
 ## Output contract
 
 Every frame returns `GateEstimate`: visibility, confidence, normalized center,
@@ -10,6 +12,16 @@ Orientation describes the viewing angle: `left` means the gate's right side
 appears closer, `head_on` means both posts have similar perspective, and
 `right` means the left side appears closer. Skip genuinely ambiguous frames
 rather than inventing labels.
+
+## Gate appearance
+ 
+Facing the gate:
+ 
+- the **left post** is **black on top and red on the bottom**;
+- the **right post** is **red on top and black on the bottom**.
+This top/bottom color pattern is the most reliable cue for telling the posts
+apart and for estimating orientation. The starting `ClassicalGatePerceiver` does
+not use it.
 
 ## Milestone 0: Workflow and baseline
 
@@ -24,17 +36,28 @@ intro-perception-vis --data clip.mp4 --algo intro_classical \
   --compare segmentation_a
 ```
 
+The visualizer reads `.jpg` and `.png` images only.
+
 ## Milestone 1: Dataset
 
-Extract 60 evenly spaced frames from each of at least three different videos.
-The local annotation tool opens each image: draw one box around the entire gate,
-then enter `l`, `h`, or `r`. Enter `s` to exclude an ambiguous view, or cancel
-the box for a true no-gate frame.
-
-The build command validates every label and assigns whole source videos to
-60/20/20 train/validation/test splits. Adjacent frames from the same video must
-never cross splits. Review the generated manifest and class balance before
-training.
+Collect roughly 180 still images that cover different lighting, distances, and
+viewing angles. Put them in `data/raw/`, then label them:
+ 
+```bash
+intro-perception-data annotate --images data/raw
+intro-perception-data split --data data/raw --output data/generated
+```
+ 
+The annotation tool opens each image: draw one box around the entire gate, then
+enter `l`, `h`, or `r`. Enter `s` to exclude an ambiguous view (it is moved to
+`data/raw/excluded/`), or cancel the box for a true no-gate image.
+ 
+`split` validates every label, shuffles the images with a fixed seed, and writes
+an 80/10/10 train/val/test split plus `dataset.yaml`. It prints image and class
+counts per split and warns when a split is missing a class; review those counts
+before training. Avoid including many near-duplicate images (bursts of the same
+scene): because images are split individually, near-duplicates can land in
+different splits and inflate your scores.
 
 ## Milestone 2: Classical CV
 
