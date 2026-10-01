@@ -1,4 +1,11 @@
-"""Score gate JSONL predictions against frame-indexed ground truth."""
+"""Score gate predictions on a held-out folder of labeled images.
+
+``--test-dir`` is a folder holding ``images/`` and ``labels/`` (for example
+``data/generated/test`` after ``intro-perception-data split``). Labels are YOLO
+``.txt`` files; an empty file means no gate. Pass ``--predictions`` to score a
+file written by ``intro-perception-run``, or omit it to run the detectors
+live on every image and score them directly.
+"""
 
 from __future__ import annotations
 
