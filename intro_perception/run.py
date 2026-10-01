@@ -1,4 +1,9 @@
-"""Run one or both gate methods and write predictions plus annotated video."""
+"""Run one or both gate methods on still images.
+
+Writes ``predictions_<method>.jsonl`` (one record per image, keyed by
+``frame_id`` = the image's file name without its extension) plus an annotated
+copy of every image under ``<output>/annotated/``.
+"""
 
 from __future__ import annotations
 
