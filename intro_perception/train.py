@@ -1,4 +1,4 @@
-"""Train the intro three-class YOLO gate detector."""
+"""Train the intro single-class (gate) YOLO detector."""
 
 from __future__ import annotations
 
