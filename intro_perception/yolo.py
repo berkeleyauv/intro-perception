@@ -15,15 +15,10 @@ from perception.tasks.TaskPerceiver import TaskPerceiver
 from perception.tasks.registry import register_perceiver
 
 from intro_perception.classical import annotate
-from intro_perception.types import GateEstimate, GateOrientation
+from intro_perception.types import GateEstimate
 
 
-CLASS_ORIENTATIONS = {
-    "gate_left": GateOrientation.LEFT,
-    "gate_head_on": GateOrientation.HEAD_ON,
-    "gate_right": GateOrientation.RIGHT,
-}
-
+GATE_CLASS = "gate"
 
 def estimate_from_result(result, image_shape):
     """Convert the highest-confidence Ultralytics box into a GateEstimate."""
@@ -34,8 +29,11 @@ def estimate_from_result(result, image_shape):
     best = max(range(len(confidences)), key=confidences.__getitem__)
     class_id = int(boxes.cls[best].cpu().item())
     class_name = result.names[class_id]
-    if class_name not in CLASS_ORIENTATIONS:
-        raise ValueError(f"unexpected YOLO class: {class_name}")
+    if class_name != GATE_CLASS:
+        raise ValueError(
+            f"unexpected YOLO class {class_name!r}: this project predicts a single "
+            f"{GATE_CLASS!r} class (was the model trained on an older 3-class dataset?)"
+        )
     x1, y1, x2, y2 = boxes.xyxy[best].cpu().tolist()
     height, width = image_shape[:2]
     return GateEstimate(
@@ -43,13 +41,11 @@ def estimate_from_result(result, image_shape):
         float(confidences[best]),
         (x1 + x2) / (2.0 * width),
         (y1 + y2) / (2.0 * height),
-        CLASS_ORIENTATIONS[class_name],
         x1 / width,
         y1 / height,
         (x2 - x1) / width,
         (y2 - y1) / height,
     ).normalized()
-
 
 @register_perceiver(task="gate", algo="intro_yolo")
 class YoloGatePerceiver(TaskPerceiver):

@@ -2,7 +2,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from intro_perception.types import GateOrientation
 from intro_perception.yolo import YoloGatePerceiver, estimate_from_result
 
 
@@ -29,15 +28,23 @@ class FakeTensor:
 def test_yolo_result_conversion():
     boxes = SimpleNamespace(
         conf=FakeTensor([0.4, 0.9]),
-        cls=FakeTensor([0, 2]),
+        cls=FakeTensor([0, 0]),
         xyxy=FakeTensor([[0, 0, 10, 10], [20, 10, 100, 90]]),
     )
-    result = SimpleNamespace(boxes=boxes, names={0: "gate_left", 2: "gate_right"})
+    result = SimpleNamespace(boxes=boxes, names={0: "gate"})
     estimate = estimate_from_result(result, (100, 200, 3))
     assert estimate.confidence == 0.9
-    assert estimate.orientation is GateOrientation.RIGHT
     assert estimate.center_x == 0.3
     assert estimate.box_height == 0.8
+
+
+def test_yolo_rejects_a_model_trained_on_the_old_three_class_dataset():
+    boxes = SimpleNamespace(
+        conf=FakeTensor([0.9]), cls=FakeTensor([0]), xyxy=FakeTensor([[0, 0, 10, 10]])
+    )
+    result = SimpleNamespace(boxes=boxes, names={0: "gate_left"})
+    with pytest.raises(ValueError, match="single 'gate' class"):
+        estimate_from_result(result, (100, 200, 3))
 
 
 def test_yolo_no_boxes_is_invisible():

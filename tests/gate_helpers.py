@@ -5,6 +5,8 @@ is red on top and black on the bottom. The background is mid-gray so only the
 painted black halves (not the whole frame) fall under the black threshold.
 """
  
+import pathlib
+
 import cv2 as cv
 import numpy as np
  
@@ -33,16 +35,18 @@ def make_gate_frame(shift=0, left=True, right=True):
     return frame
  
  
-def gate_label(class_id=1, shift=0):
+def gate_label(shift=0):
     """YOLO label line for the whole gate drawn by ``make_gate_frame``."""
     x1, x2 = LEFT_X + shift, RIGHT_X + shift + POST_WIDTH
     center_x, center_y = (x1 + x2) / 2 / WIDTH, (TOP + BOTTOM) / 2 / HEIGHT
     width, height = (x2 - x1) / WIDTH, (BOTTOM - TOP) / HEIGHT
-    return f"{class_id} {center_x:.8f} {center_y:.8f} {width:.8f} {height:.8f}\n"
+    return f"0 {center_x:.8f} {center_y:.8f} {width:.8f} {height:.8f}\n"
  
  
-def write_labeled_image(directory, name, *, shift=0, class_id=1, gate=True, ext=".png"):
+def write_labeled_image(directory, name, *, shift=0, gate=True, ext=".png", labels_dir=None):
     """Write ``<name><ext>`` plus its YOLO ``.txt`` label; ``gate=False`` makes a no-gate image.
+
+    The label goes next to the image unless ``labels_dir`` is given.
  
     PNG is the default so colors survive exactly (JPEG blurs red toward the
     hue wrap-around that the baseline deliberately misses).
@@ -54,5 +58,7 @@ def write_labeled_image(directory, name, *, shift=0, class_id=1, gate=True, ext=
     else:
         frame = np.full((HEIGHT, WIDTH, 3), GRAY, dtype=np.uint8)
     assert cv.imwrite(str(image_path), frame)
-    image_path.with_suffix(".txt").write_text(gate_label(class_id, shift) if gate else "")
+    label_dir = pathlib.Path(labels_dir) if labels_dir else directory
+    label_dir.mkdir(parents=True, exist_ok=True)
+    (label_dir / f"{name}.txt").write_text(gate_label(shift) if gate else "")
     return image_path

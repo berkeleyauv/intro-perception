@@ -1,7 +1,6 @@
 from gate_helpers import make_gate_frame
 
 from intro_perception.classical import ClassicalGatePerceiver
-from intro_perception.types import GateOrientation
 from perception.tasks.registry import get_perceiver
 
 
@@ -14,7 +13,6 @@ def test_baseline_finds_spec_gate_and_box():
     assert estimate.visible
     assert abs(estimate.center_x - 0.5) < 0.02
     assert abs(estimate.center_y - 93 / 180) < 0.01
-    assert estimate.orientation is GateOrientation.HEAD_ON
     assert estimate.box_width > 0.4
     # Regression for the y2 typo (right_post[0] used instead of right_post[1]),
     # which stretched the box to the bottom of the image.
@@ -36,5 +34,3 @@ def test_declared_slider_defaults_match_code_defaults():
     assert perceiver.analyze(frame, debug=False, slider_vals=defaults) == perceiver.analyze(
         frame, debug=False
     )
-
-

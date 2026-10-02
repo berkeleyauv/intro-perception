@@ -15,10 +15,16 @@ Only still images (`.jpg`, `.jpeg`, `.png`) are used; videos are ignored or
 rejected. Image names must be unique once the extension is dropped (`a.jpg` and
 `a.png` clash), because the name is the key for labels and predictions.
 
-A label file holds one line, `class cx cy w h`, normalized to 0-1, with class
-0/1/2 = `gate_left` / `gate_head_on` / `gate_right`. An empty `.txt` means the
-image has no gate. `intro-perception-data annotate` writes these for you;
-ambiguous images you skip are moved to `data/raw/excluded/`.
+A label file holds one line, `class cx cy w h`, normalized to 0-1. The only
+class is `0` = `gate`, and the box covers the visible gate (up to the image edge
+if it is cut off). An empty `.txt` means the image has no gate.
+`intro-perception-data annotate` writes these for you; ambiguous images you skip
+are moved to `data/raw/excluded/`.
+
+Labels do not have to sit next to their images. If they are in their own folder
+(for example `data/labels_detect/` from the auto-labeling pipeline, possibly with
+a `manifest.csv`), run `intro-perception-data split --data <images> --labels
+<labels>`. Images without a label are left out of the dataset.
 
 `data/raw/` and `data/generated/` are ignored by Git. To share labels within a
 student team, archive them outside the repository or use an approved team
