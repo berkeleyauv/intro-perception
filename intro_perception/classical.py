@@ -18,7 +18,7 @@ prepare_production_namespace()
 from perception.tasks.TaskPerceiver import TaskPerceiver
 from perception.tasks.registry import register_perceiver
 
-from intro_perception.types import GateEstimate, GateOrientation
+from intro_perception.types import GateEstimate
 
 
 @register_perceiver(task="gate", algo="intro_classical")
