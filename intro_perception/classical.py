@@ -91,18 +91,10 @@ class ClassicalGatePerceiver(TaskPerceiver):
             y1 = min(left_post[1], right_post[1])
             x2 = max(left_post[0] + left_post[2], right_post[0] + right_post[2])
             y2 = max(left_post[1] + left_post[3], right_post[1] + right_post[3])
-
+ 
             left_center = left_post[0] + left_post[2] / 2.0
             right_center = right_post[0] + right_post[2] / 2.0
-
-            ratio = right_post[2] / max(left_post[2], 1)
-            if ratio > 1.12:
-                orientation = GateOrientation.LEFT
-            elif ratio < 1.0 / 1.12:
-                orientation = GateOrientation.RIGHT
-            else:
-                orientation = GateOrientation.HEAD_ON
-
+ 
             separation = abs(right_center - left_center) / frame.shape[1]
             area_fraction = (left_post[-1] + right_post[-1]) / (frame.shape[0] * frame.shape[1])
             confidence = min(1.0, separation * 1.5 + area_fraction * 8.0)
@@ -112,13 +104,12 @@ class ClassicalGatePerceiver(TaskPerceiver):
                 confidence,
                 (left_center + right_center) / (2.0 * frame.shape[1]),
                 (y1 + y2) / (2.0 * frame.shape[0]),
-                orientation,
                 x1 / frame.shape[1],
                 y1 / frame.shape[0],
                 (x2 - x1) / frame.shape[1],
                 (y2 - y1) / frame.shape[0],
             ).normalized()
-
+ 
         if not debug:
             return estimate
             
@@ -137,7 +128,7 @@ def annotate(frame, estimate, label_prefix="classical"):
         x2 = int((estimate.box_x + estimate.box_width) * width)
         y2 = int((estimate.box_y + estimate.box_height) * height)
         cv.rectangle(canvas, (x1, y1), (x2, y2), (0, 165, 255), 2)
-        label = f"{label_prefix}: {estimate.orientation.value} {estimate.confidence:.2f}"
+        label = f"{label_prefix}: gate {estimate.confidence:.2f}"
         cv.putText(canvas, label, (10, 26), cv.FONT_HERSHEY_SIMPLEX, 0.65,
                    (255, 255, 255), 2, cv.LINE_AA)
     else:
