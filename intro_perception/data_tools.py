@@ -1,18 +1,17 @@
-
 """Label, split, and package a local YOLO gate dataset from still images.
- 
+
 Workflow (images only):
- 
+
     intro-perception-data annotate --images data/raw
         draws boxes by hand and writes data/raw/<image>.txt next to each image
     intro-perception-data split --data data/raw --output data/generated
         copies labeled images into train/val/test and writes dataset.yaml
- 
+
 If your labels are in a separate folder (for example the auto-labeling
 pipeline's ``labels_detect/``), point ``split`` at both:
- 
+
     intro-perception-data split --data data/images --labels data/labels_detect
- 
+
 Label files use the YOLO format, one line per image:
 ``class center_x center_y width height`` with coordinates normalized to 0-1.
 There is a single class, 0 = gate. The box covers the whole visible gate (a gate
@@ -25,8 +24,8 @@ from __future__ import annotations
 import argparse
 import csv
 from pathlib import Path
-import shutil
 import random
+import shutil
 
 import cv2 as cv
 
@@ -35,8 +34,9 @@ from intro_perception.images import list_images, read_image
 CLASS_NAMES = ("gate",)
 SPLITS = ("train", "val", "test")
 
+
 def parse_label(path):
-    """ Read a single YOLO label file
+    """Read one YOLO label file.
 
     Returns ``None`` for an empty file (a true no-gate image), otherwise
     ``(center_x, center_y, width, height)``, all normalized. Raises
@@ -71,29 +71,27 @@ def parse_label(path):
         raise ValueError(f"{path}: box values must be in 0-1 with a positive size")
     return center_x, center_y, width, height
 
-def write_label(path, class_id, box_xywh_pixels, image_shape):
-    """Write a one-box YOLO label:
-    
-    - '(x, y, width, height)'
-    """
+
+def write_label(path, box_xywh_pixels, image_shape):
+    """Write a one-box class-0 YOLO label from a pixel box ``(x, y, width, height)``."""
     x, y, width, height = box_xywh_pixels
     image_height, image_width = image_shape[:2]
     Path(path).write_text(
-        f"{class_id} {(x + width / 2) / image_width:.8f} "
+        f"0 {(x + width / 2) / image_width:.8f} "
         f"{(y + height / 2) / image_height:.8f} "
         f"{width / image_width:.8f} {height / image_height:.8f}\n",
         encoding="utf-8",
     )
 
-def annotate_directory(images):
-    """Label every image that has no corresponding .txt yet
-    
-    Draw one box around the entire gate, then enter its orientation. Cancel the
-    box for a true no-gate image (an empty label file is written). Enter ``s``
-    to move an ambiguous image into ``<images>/excluded/`` so it is never
-    trained or scored on.
-    """
 
+def annotate_directory(images):
+    """Label every image that has no ``.txt`` yet.
+
+    Draw one box around the gate (up to the image edge if it is cut off), then
+    press Enter to save it. Cancel the box for a true no-gate image (an empty
+    label file is written). Enter ``s`` to move an ambiguous image into
+    ``<images>/excluded/`` so it is never trained or scored on.
+    """
     for image_path in list_images(images):
         label_path = image_path.with_suffix(".txt")
         if label_path.exists():
@@ -113,6 +111,7 @@ def annotate_directory(images):
             continue
         write_label(label_path, (int(x), int(y), int(width), int(height)), frame.shape)
 
+
 def read_manifest(labels_dir):
     """Read the labeling pipeline's ``manifest.csv`` (if there is one), keyed by image file stem."""
     path = Path(labels_dir) / "manifest.csv"
@@ -124,15 +123,16 @@ def read_manifest(labels_dir):
             raise ValueError(f"{path}: expected a 'filename' column")
         return {Path(row["filename"]).stem: row for row in reader}
 
+
 def pair_images_and_labels(data_dir, labels_dir=None):
     """Return ``([(image, label), ...], unlabeled_image_names)``.
- 
+
     Without ``labels_dir`` every image needs a ``.txt`` next to it. With it, the
     labels decide what is in the dataset: images without a label are left out
     (and reported), but a label with no matching image is an error.
     """
     images = list_images(data_dir)
- 
+
     if labels_dir is None:
         missing = [image.name for image in images if not image.with_suffix(".txt").exists()]
         if missing:
@@ -142,7 +142,7 @@ def pair_images_and_labels(data_dir, labels_dir=None):
                 "or pass --labels if your labels are in a separate folder"
             )
         return [(image, image.with_suffix(".txt")) for image in images], []
- 
+
     labels_dir = Path(labels_dir)
     if not labels_dir.is_dir():
         raise ValueError(f"{labels_dir} is not a folder")
@@ -153,7 +153,7 @@ def pair_images_and_labels(data_dir, labels_dir=None):
     }
     if not label_files:
         raise ValueError(f"no .txt labels found in {labels_dir}")
- 
+
     by_stem = {image.stem: image for image in images}
     orphans = sorted(stem for stem in label_files if stem not in by_stem)
     if orphans:
@@ -163,6 +163,7 @@ def pair_images_and_labels(data_dir, labels_dir=None):
         )
     unlabeled = [image.name for stem, image in by_stem.items() if stem not in label_files]
     return [(by_stem[stem], label_files[stem]) for stem in sorted(label_files)], unlabeled
+
 
 def split_dataset(
     data_dir,
@@ -174,19 +175,19 @@ def split_dataset(
     labels_dir=None,
 ):
     """Split labeled images into train/val/test and write ``dataset.yaml``.
- 
+
     By default every image needs a ``.txt`` label next to it (empty = no gate).
     With ``labels_dir`` the labels live in a separate folder and decide which
     images are used; images without a label are left out. Each split gets at
     least one image, so at least three labeled images are required. Images are
     shuffled with ``seed`` after sorting, so the split is reproducible.
- 
+
     If ``labels_dir`` holds a ``manifest.csv`` from the labeling pipeline, a
     ``manifest.csv`` (filename, split, status, truncated) is written next to
     ``dataset.yaml`` so cut-off gates can be found later.
- 
+
     Returns a per-split summary of image counts.
- 
+
     The split is random per image. If several images come from the same scene or
     burst, near-duplicates can land in different splits and inflate your scores;
     keep such groups out of the data or split them by hand.
@@ -194,9 +195,9 @@ def split_dataset(
     data_dir, output_dir = Path(data_dir), Path(output_dir)
     pairs, unlabeled = pair_images_and_labels(data_dir, labels_dir)
     source_manifest = read_manifest(labels_dir) if labels_dir is not None else {}
- 
+
     labels = {image: parse_label(label) for image, label in pairs}
- 
+
     total = len(pairs)
     if total < 3:
         raise ValueError("need at least 3 labeled images (one each for train, val, test)")
@@ -206,7 +207,7 @@ def split_dataset(
     train_count = total - val_count - test_count
     if train_count < 1:
         raise ValueError("ratios leave no images for training")
- 
+
     existing = [
         output_dir / split
         for split in SPLITS
@@ -219,11 +220,11 @@ def split_dataset(
         )
     for split in SPLITS:
         shutil.rmtree(output_dir / split, ignore_errors=True)
- 
+
     if unlabeled:
         print(f"note: {len(unlabeled)} image(s) have no label and were left out "
               f"(e.g. {', '.join(unlabeled[:3])})")
- 
+
     shuffled = list(pairs)
     random.Random(seed).shuffle(shuffled)
     splits = {
@@ -231,7 +232,7 @@ def split_dataset(
         "val": shuffled[train_count:train_count + val_count],
         "test": shuffled[train_count + val_count:],
     }
- 
+
     summary = {}
     manifest_rows = []
     for split, files in splits.items():
@@ -254,7 +255,7 @@ def split_dataset(
                     {"filename": image.name, "split": split, "status": status, "truncated": truncated}
                 )
         summary[split] = counts
- 
+
     if source_manifest:
         with (output_dir / "manifest.csv").open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(
@@ -262,7 +263,7 @@ def split_dataset(
             )
             writer.writeheader()
             writer.writerows(sorted(manifest_rows, key=lambda row: row["filename"]))
- 
+
     # `path` is left out on purpose: Ultralytics then resolves the splits
     # relative to this file instead of the current working directory.
     (output_dir / "dataset.yaml").write_text(
@@ -275,15 +276,16 @@ def split_dataset(
     )
     return summary
 
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     commands = parser.add_subparsers(dest="command", required=True)
- 
+
     annotate = commands.add_parser("annotate", help="label images by drawing boxes")
     annotate.add_argument("--images", type=Path, default=Path("data/raw"))
- 
+
     split = commands.add_parser("split", help="split labeled images into train/val/test")
     split.add_argument("--data", type=Path, default=Path("data/raw"),
                        help="folder of images")
@@ -293,9 +295,9 @@ def main():
     split.add_argument("--output", type=Path, default=Path("data/generated"))
     split.add_argument("--seed", type=int, default=42)
     split.add_argument("--overwrite", action="store_true")
- 
+
     args = parser.parse_args()
- 
+
     if args.command == "annotate":
         annotate_directory(args.images)
     else:
@@ -309,6 +311,7 @@ def main():
             print(f"  {split_name}: {detail}")
             if counts["gate"] == 0:
                 print(f"    warning: {split_name} has no gate images")
+
 
 if __name__ == "__main__":
     main()
