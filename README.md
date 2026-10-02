@@ -2,8 +2,8 @@
 
 Build two qualification-gate detectors from supplied underwater images: a
 classical OpenCV pipeline and a fine-tuned YOLO model. Both methods return the
-same gate box, center, confidence, and view orientation (`left`, `head_on`, or
-`right`) so their accuracy, speed, and failure modes can be compared fairly.
+same gate box, center, and confidence, so their accuracy, speed, and failure
+modes can be compared fairly.
 
 ## Start here
 
@@ -23,9 +23,9 @@ Student code belongs in `intro_perception/`. Follow [GUIDE.md](GUIDE.md) for the
 ## Core commands
 
 ```bash
-# Put your images in data/raw/, then draw one box per image and pick its
-# orientation. This writes data/raw/<image>.txt next to each image (an empty
-# .txt means "no gate"). Already-labeled images are skipped.
+# Put your images in data/raw/, then draw one box per image. This writes
+# data/raw/<image>.txt next to each image (an empty .txt means "no gate").
+# Already-labeled images are skipped.
 intro-perception-data annotate --images data/raw
 
 # Split into train/val/test (80/10/10) and write data/generated/dataset.yaml.
@@ -49,9 +49,16 @@ intro-perception-evaluate --test-dir data/generated/test
 under `output/annotated/`. Use `--method classical` until you have trained YOLO
 weights.
  
-Labels you create elsewhere work too: any YOLO-format `.txt` file next to its
-image (`class cx cy w h`, normalized, class 0/1/2 = `gate_left` / `gate_head_on`
-/ `gate_right`, one gate box per image) is accepted by `split`.
+Labels you create elsewhere work too: any YOLO-format `.txt` file (`0 cx cy w h`,
+normalized, one gate box per image; class `0` = `gate` is the only class) is
+accepted by `split`. If the labels sit next to their images, use `--data`. If
+they are in a separate folder, add `--labels`; images without a label are then
+left out:
+
+```bash
+intro-perception-data split --data data/images --labels data/labels_detect \
+  --output data/generated
+```
  
 Raw images, generated datasets, model weights, and run artifacts are
 intentionally ignored by Git.
