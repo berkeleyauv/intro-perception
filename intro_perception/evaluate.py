@@ -32,7 +32,7 @@ def load_truth(test_dir):
         if parsed is None:
             truth[image_path.stem] = {"visible": False}
             continue
-        class_id, center_x, center_y, width, height = parsed
+        center_x, center_y, width, height = parsed
         truth[image_path.stem] = {
             "visible": True,
             "center_x": center_x,
