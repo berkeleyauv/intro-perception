@@ -62,3 +62,8 @@ def write_labeled_image(directory, name, *, shift=0, gate=True, ext=".png", labe
     label_dir.mkdir(parents=True, exist_ok=True)
     (label_dir / f"{name}.txt").write_text(gate_label(shift) if gate else "")
     return image_path
+
+def make_gate_with_distractor():
+    frame = make_gate_frame()
+    cv.rectangle(frame, (15, 20), (35, 165), RED, -1)
+    return frame

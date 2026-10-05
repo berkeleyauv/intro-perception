@@ -78,9 +78,44 @@ class ClassicalGatePerceiver(TaskPerceiver):
             if area >= 30.0 and height >= max(10, int(width * 1.2)):
                 candidates.append((x, y, width, height, area))
         
-        # Sort by area and pick top 2
-        candidates.sort(key=lambda c: c[-1], reverse=True)
-        selected = sorted(candidates[:2], key=lambda c: c[0])
+        # Find the most plausible pair of gate posts
+        selected = []
+        best_score = -1.0
+
+        for i in range(len(candidates)):
+            for j in range(i + 1, len(candidates)):
+                first = candidates[i]
+                second = candidates[j]
+
+                left, right = sorted((first, second), key=lambda c: c[0])
+
+                left_center = left[0] + left[2] / 2.0
+                right_center = right[0] + right[2] / 2.0
+
+                separation = (right_center - left_center) / frame.shape[1]
+
+                # Gate posts should have similar heights
+                height_similarity = min(left[3], right[3]) / max(left[3], right[3])
+
+                # Gate posts should start at roughly similar vertical positions
+                vertical_alignment = 1.0 - min(
+                    1.0,
+                    abs(left[1] - right[1]) / frame.shape[0]
+                )
+
+                # Ignore pairs that are extremely close together
+                if separation < 0.1:
+                    continue
+
+                score = (
+                    0.5 * height_similarity
+                    + 0.3 * vertical_alignment
+                    + 0.2 * separation
+                )
+
+                if score > best_score:
+                    best_score = score
+                    selected = [left, right]
 
         estimate = GateEstimate.invisible()
         
