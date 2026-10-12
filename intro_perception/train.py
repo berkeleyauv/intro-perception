@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--device", default=None)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output", type=Path, default=Path("artifacts/yolo/best.pt"))
     args = parser.parse_args()
 
@@ -37,6 +38,8 @@ def main():
         project="artifacts/training",
         name="gate",
         exist_ok=True,
+        seed=args.seed,
+        deterministic=True,
     )
     best = Path(run.save_dir) / "weights" / "best.pt"
     args.output.parent.mkdir(parents=True, exist_ok=True)

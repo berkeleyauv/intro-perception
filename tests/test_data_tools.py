@@ -282,3 +282,43 @@ def test_annotate_writes_labels_skips_done_and_moves_excluded(tmp_path, monkeypa
     assert (images / "d.txt").read_text() == "0 0.5 0.5 0.2 0.2\n"
     assert parse_label(images / "e.txt") == pytest.approx((0.35, 0.5, 0.5, 0.8))
     assert not any("orientation" in prompt for prompt in prompts)  # no l/h/r question any more
+
+def test_split_keeps_roboflow_copies_of_one_photo_together(tmp_path):
+    images = tmp_path / "images"
+    for photo in range(12):
+        for copy in "abc":
+            write_labeled_image(images, f"{1000 + photo}_5_jpg.rf.{copy}{photo}", gate=photo % 4 != 0)
+    out = tmp_path / "out"
+    data_tools.split_dataset(images, out)
+    seen = {}
+    for split in ("train", "val", "test"):
+        names = [p.stem for p in (out / split / "images").iterdir()]
+        assert names, split
+        for name in names:
+            seen.setdefault(data_tools.source_key(name), set()).add(split)
+    assert len(seen) == 12
+    assert all(len(splits) == 1 for splits in seen.values())
+
+
+def test_source_key_leaves_plain_names_alone():
+    assert data_tools.source_key("1755012414_136641_jpg.rf.abc123") == "1755012414_136641_jpg"
+    assert data_tools.source_key("gate_01") == "gate_01"
+
+
+def test_burst_gap_keeps_consecutive_frames_together(tmp_path):
+    images = tmp_path / "images"
+    # 10 bursts of 4 frames 0.5 s apart, bursts 60 s apart, 2 copies per frame.
+    for burst in range(10):
+        for frame in range(4):
+            seconds = 1755000000 + burst * 60 + frame // 2
+            micros = 500000 * (frame % 2)
+            for copy in "ab":
+                write_labeled_image(images, f"{seconds}_{micros}_jpg.rf.{copy}{burst}{frame}")
+    out = tmp_path / "out"
+    data_tools.split_dataset(images, out, burst_gap=5)
+    burst_of = {}
+    for split in ("train", "val", "test"):
+        for path in (out / split / "images").iterdir():
+            burst_of.setdefault((int(path.stem[:10]) - 1755000000) // 60, set()).add(split)
+    assert len(burst_of) == 10
+    assert all(len(splits) == 1 for splits in burst_of.values())

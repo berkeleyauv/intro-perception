@@ -25,6 +25,7 @@ import argparse
 import csv
 from pathlib import Path
 import random
+import re
 import shutil
 
 import cv2 as cv
@@ -165,6 +166,40 @@ def pair_images_and_labels(data_dir, labels_dir=None):
     return [(by_stem[stem], label_files[stem]) for stem in sorted(label_files)], unlabeled
 
 
+def source_key(stem):
+    """The original photo an image came from.
+
+    Roboflow exports name every augmented copy ``<source>_jpg.rf.<hash>``; all
+    copies share ``<source>_jpg``. Other names are their own source.
+    """
+    return stem.split(".rf.", 1)[0]
+
+
+TIMESTAMP = re.compile(r"^(\d{9,})_(\d+)")
+
+
+def burst_keys(stems, gap_seconds):
+    """Map each stem to a burst id: photos taken less than ``gap_seconds`` apart.
+
+    Only names that start with a Unix timestamp (``<seconds>_<microseconds>``,
+    as the camera logger writes them) are grouped by time; any other name keeps
+    its ``source_key``.
+    """
+    timed = {}
+    for stem in stems:
+        match = TIMESTAMP.match(stem)
+        if match:
+            timed[stem] = float(f"{match.group(1)}.{match.group(2)}")
+    keys = {stem: source_key(stem) for stem in stems if stem not in timed}
+    previous, burst = None, None
+    for stem in sorted(timed, key=timed.get):
+        if previous is None or timed[stem] - previous > gap_seconds:
+            burst = f"burst@{timed[stem]:.6f}"
+        keys[stem] = burst
+        previous = timed[stem]
+    return keys
+
+
 def split_dataset(
     data_dir,
     output_dir,
@@ -173,6 +208,8 @@ def split_dataset(
     seed=42,
     overwrite=False,
     labels_dir=None,
+    group_copies=True,
+    burst_gap=0.0,
 ):
     """Split labeled images into train/val/test and write ``dataset.yaml``.
 
@@ -188,9 +225,13 @@ def split_dataset(
 
     Returns a per-split summary of image counts.
 
-    The split is random per image. If several images come from the same scene or
-    burst, near-duplicates can land in different splits and inflate your scores;
-    keep such groups out of the data or split them by hand.
+    With ``group_copies`` (the default), augmented copies of one photo (see
+    ``source_key``) always land in the same split, so a test image never has a
+    near-identical twin in train. Otherwise the split is random per image.
+    With ``burst_gap`` > 0, photos whose timestamped names are less than that
+    many seconds apart (consecutive frames of one pass) are kept together too.
+    Bursts of different photos of one scene are not grouped; keep such groups
+    out of the data or split them by hand.
     """
     data_dir, output_dir = Path(data_dir), Path(output_dir)
     pairs, unlabeled = pair_images_and_labels(data_dir, labels_dir)
@@ -225,13 +266,34 @@ def split_dataset(
         print(f"note: {len(unlabeled)} image(s) have no label and were left out "
               f"(e.g. {', '.join(unlabeled[:3])})")
 
-    shuffled = list(pairs)
+    groups = {}
+    bursts = burst_keys([image.stem for image, _ in pairs], burst_gap) if burst_gap > 0 else {}
+    for pair in pairs:
+        if burst_gap > 0:
+            key = bursts[pair[0].stem]
+        else:
+            key = source_key(pair[0].stem) if group_copies else pair[0].stem
+        groups.setdefault(key, []).append(pair)
+    shuffled = [groups[key] for key in sorted(groups)]
     random.Random(seed).shuffle(shuffled)
-    splits = {
-        "train": shuffled[:train_count],
-        "val": shuffled[train_count:train_count + val_count],
-        "test": shuffled[train_count + val_count:],
-    }
+    # Whole groups go to the split where their first image would fall; with one
+    # image per group this is exactly the per-image split.
+    splits = {split: [] for split in SPLITS}
+    start = 0
+    for group in shuffled:
+        if start < train_count:
+            splits["train"].extend(group)
+        elif start < train_count + val_count:
+            splits["val"].extend(group)
+        else:
+            splits["test"].extend(group)
+        start += len(group)
+    empty = [split for split, files in splits.items() if not files]
+    if empty:
+        raise ValueError(
+            f"no images left for {', '.join(empty)} after keeping copies of each photo "
+            "together; add more photos or pass --no-group-copies"
+        )
 
     summary = {}
     manifest_rows = []
@@ -295,6 +357,12 @@ def main():
     split.add_argument("--output", type=Path, default=Path("data/generated"))
     split.add_argument("--seed", type=int, default=42)
     split.add_argument("--overwrite", action="store_true")
+    split.add_argument("--no-group-copies", dest="group_copies", action="store_false",
+                       help="split per image even if images are copies of one photo "
+                            "(Roboflow '<photo>_jpg.rf.<hash>' names)")
+    split.add_argument("--burst-gap", type=float, default=0.0,
+                       help="also keep timestamped photos taken less than this many "
+                            "seconds apart in the same split (e.g. 5)")
 
     args = parser.parse_args()
 
@@ -303,7 +371,8 @@ def main():
     else:
         summary = split_dataset(
             args.data, args.output, seed=args.seed, overwrite=args.overwrite,
-            labels_dir=args.labels,
+            labels_dir=args.labels, group_copies=args.group_copies,
+            burst_gap=args.burst_gap,
         )
         print(f"wrote dataset to {args.output}")
         for split_name, counts in summary.items():
