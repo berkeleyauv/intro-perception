@@ -28,3 +28,7 @@ include = ["intro_perception*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+# fitted color look-up table and confidence calibration for the classical detector
+intro_perception = ["*.npz", "*.json"]
