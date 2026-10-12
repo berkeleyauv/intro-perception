@@ -6,11 +6,9 @@ and a fine-tuned YOLO26-nano, scored on the same held-out test split.
 
 > Step-by-step instructions for finishing and submitting: [docs/STEPS.md](docs/STEPS.md).
 >
-> **Status:** classical pipeline, dataset split, tests and tooling are done and
-> scored on the test split. YOLO is trained in Colab
-> (`notebooks/train_colab.ipynb`); `scripts/finish_yolo.sh` fills its column
-> of the comparison table below. Sections marked _(after YOLO)_ are finished
-> from those results.
+> **Status:** both detectors are finished and scored on the same 183 held-out
+> test images. YOLO: precision 0.98, recall 0.93, mAP50 0.91; classical:
+> 0.83 / 0.73 / 0.70; the starting detector: 0.13 / 0.06 / 0.02.
 
 ## Setup
 
@@ -139,23 +137,24 @@ limitation below). Before/after on synthetic scenes:
 ## Results on the held-out test split
 
 <!-- comparison:start -->
-| metric | baseline | classical | yolo |
-|---|---:|---:|---:|
-| precision @ IoU 0.5 | 0.125 | 0.835 | _(after YOLO)_ |
-| recall @ IoU 0.5 | 0.062 | 0.726 | _(after YOLO)_ |
-| mAP50 | 0.017 | 0.701 | _(after YOLO)_ |
-| mean center error (normalized) | 0.1006 | 0.0163 | _(after YOLO)_ |
-| FPS | 582.1 | 25.3 | _(after YOLO)_ |
-| recall, whole gates | 0.175 | 0.750 | _(after YOLO)_ |
-| recall, cut-off gates | 0.019 | 0.717 | _(after YOLO)_ |
-| precision, cut-off gates | 0.047 | 0.844 | _(after YOLO)_ |
-| test frames | 183 | 183 | 183 |
+| metric | baseline | classical | yolo | yolo_cpu |
+|---|---:|---:|---:|---:|
+| precision @ IoU 0.5 | 0.125 | 0.835 | 0.978 | 0.978 |
+| recall @ IoU 0.5 | 0.062 | 0.726 | 0.932 | 0.932 |
+| mAP50 | 0.017 | 0.701 | 0.914 | 0.914 |
+| mean center error (normalized) | 0.1006 | 0.0163 | 0.0076 | 0.0076 |
+| FPS | 582.1 | 25.3 | 83.5 | 8.3 |
+| recall, whole gates | 0.175 | 0.750 | 0.875 | 0.875 |
+| recall, cut-off gates | 0.019 | 0.717 | 0.953 | 0.953 |
+| precision, cut-off gates | 0.047 | 0.844 | 0.990 | 0.990 |
+| test frames | 183 | 183 | 183 | 183 |
 <!-- comparison:end -->
 
-FPS is single-image latency on the machine that ran each method. Baseline and
-classical were timed on a 2-core cloud CPU; YOLO's `yolo` column is timed on
-the Colab GPU and `yolo_cpu` on the Colab CPU, which is the fairer comparison
-with the classical numbers.
+The `yolo` and `yolo_cpu` columns are the same model and the same answers;
+only the timing differs. FPS is single-image latency on the machine that ran
+each method: baseline and classical on a 2-core cloud CPU, `yolo` on Colab's
+T4 GPU, `yolo_cpu` on Colab's CPU (also 2 cores). Compare speed between
+`classical` and `yolo_cpu`.
 
 Annotated test images: `output/annotated/` (classical), `output/side_by_side/`
 (classical | YOLO, label in green, prediction in orange), mistakes in
@@ -186,20 +185,71 @@ well when the visible post is clear (recall 0.72, precision 0.84) because the
 one-post rule matches how they are labeled; they fail when the visible post is
 faint or is confused with its own support pipe.
 
-## YOLO _(after YOLO)_
+## YOLO
 
-Training curves are in `artifacts/yolo/colab/results.png`; Ultralytics' own
-test metrics in `artifacts/yolo/colab/ultralytics_test_metrics.json`.
-`output/failures/yolo/` lists its mistakes.
+Trained in Google Colab (`notebooks/train_colab.ipynb`) on a T4 GPU with the
+required settings: pretrained `yolo26n.pt`, one class `gate`, 30 epochs,
+640 px, seed 0. Training took **14.4 minutes** (864 s for 30 epochs,
+`results.csv`). On the validation split the last epoch reached mAP50 0.899
+(mAP50-95 0.864); the saved `best.pt` is from epoch 28 (precision 0.914,
+recall 0.921, mAP50 0.903, mAP50-95 0.867). Validation mAP50 was already 0.86
+at epoch 2 and climbed to about 0.90 over the remaining epochs, with the last
+few epochs nearly flat, so 30 epochs was enough.
 
-## Discussion _(after YOLO)_
+### YOLO failure analysis (10 mistakes in 183 test frames)
 
-- **Accuracy vs speed** – classical: no training, CPU only, ~25 FPS at 640 px,
-  every decision explainable; YOLO: compare the table.
-- **Training-data coverage** – compare YOLO's recall on whole vs cut-off gates
-  with how many of each are in train (619 whole, 565 cut-off), and check
-  whether its mistakes cluster in the same faint/rolled frames.
-- **Deploy** – decide from the table.
+YOLO made 7 misses, 3 boxes with IoU below 0.5 and **no false alarms** on the
+37 no-gate images. The 10 frames come from only 6 photos (each photo is in
+the data 3 times), and **every one of them is also a classical mistake**:
+YOLO fails on a subset of the frames where classical fails.
+
+| failure mode | count | what happens |
+|---|---:|---|
+| Strong camera roll | 3 | one photo (`1755027671_938639`, 3 copies) taken with the camera rolled about 30–40°: posts and crossbar run diagonally, unlike almost every training image; missed |
+| Cut-off gate with only a sliver of post in view | 4 | two photos (`1755027672_330226`, `1755027675_463282`) where the gate runs off the frame and little of the visible post shows, in the same tilted pass as above; missed |
+| Label disagrees with the usual box | 3 | `1755028033_048779` and `1755028146_248589` are labeled as a box around a single post, and `1755028144_19422` runs up the support pipe to the top of the frame; YOLO drew the usual crossbar-to-bottom gate box, which looks reasonable but scores IoU 0.01–0.41 |
+
+The pictures are in `output/failures/yolo/` (green = label, orange = YOLO).
+Seven of the ten failures are frames from one 4-second stretch of video
+(timestamps 1755027671–1755027675), so they are really one hard moment rather
+than seven separate problems.
+
+## Discussion
+
+- **Three failure modes (both methods).** (1) Strong camera roll breaks
+  both: classical assumes near-vertical posts and YOLO saw few rolled
+  examples. (2) Cut-off gates with little of a post visible: classical also
+  misses faint posts and confuses posts with their support pipes (11 frames),
+  which YOLO does not. (3) Labels that box one post or run up the support
+  pipe instead of the usual crossbar-to-bottom box cost both methods the same
+  3 frames; the labels should be checked rather than the detectors tuned to
+  them.
+- **Accuracy vs speed.** YOLO is clearly more accurate: recall 0.93 vs 0.73,
+  precision 0.98 vs 0.83, mAP50 0.91 vs 0.70, and half the center error
+  (0.008 vs 0.016 of the image). Classical is about **3× faster on a CPU**
+  (25.3 vs 8.3 FPS on similar 2-core machines) and needs no training. With a
+  GPU YOLO runs at 83.5 FPS, faster than either on a CPU.
+- **Training-data coverage.** Train had 619 whole and 565 cut-off gates, so
+  both kinds were well covered, and YOLO's recall on cut-off gates (0.95) is
+  actually *higher* than on whole gates (0.88). What decides its misses is
+  not whole vs cut-off but views that are rare in training: the rolled-camera
+  pass causes 7 of its 10 failures. More rolled and tilted views (or stronger
+  rotation augmentation) are the most direct way to improve it.
+- **Where the classical assumptions fail.** It assumes both paint colors are
+  visible and separable from the water, posts are near-vertical, and a lone
+  post means the gate continues past the frame edge. It fails on faint or
+  washed-out posts (15), support pipes read as posts (11), wrong box extent
+  (8) and camera roll (6). On cut-off gates it does well when the visible post
+  is clear (recall 0.72, precision 0.84) but YOLO is better there (0.95,
+  0.99).
+- **What I would deploy and improve next.** YOLO as the gate detector, if the
+  robot's computer can run it fast enough (83.5 FPS on a T4 GPU, 8.3 FPS on a
+  2-core CPU). Next: add rolled and tilted training images, check the handful
+  of inconsistent labels and agree on one rule for where the box top goes
+  (crossbar, not support pipe), export the model to ONNX/TensorRT for the
+  robot's hardware, and keep the classical color-pattern check running inside
+  YOLO's box to tell the left post from the right and estimate the gate's
+  orientation, which YOLO's single box does not give.
 
 ## Optional extension: orientation
 
@@ -220,7 +270,19 @@ search inside the box for more pairs.
   augmentation; a new pool needs `REFIT=1 ./scripts/full_pipeline.sh ...`.
 - A cut-off gate seen from behind is boxed toward the wrong edge, because its
   color pattern points to the opposite side (seen once in the training data).
+- YOLO misses gates seen with the camera rolled about 30° or more, which are
+  rare in the training data.
+- The test split is 183 images but only 61 distinct photos from a few passes,
+  so one hard moment (the rolled pass) moves recall by several points.
+- A few labels disagree on the box (one post only, or up the support pipe);
+  both methods lose those frames.
+- YOLO's speed depends on hardware: 83.5 FPS on a T4 GPU but 8.3 FPS on a
+  2-core CPU.
 
 ## Contributions
 
-_TODO: each member's contribution._
+- **Satyajith Kesanapally** – everything in this branch: dataset split,
+  classical detector, evaluation, YOLO training in Colab, and this report.
+- Code and report drafts were written with help from Claude (an AI
+  assistant); I ran every step, checked the results, and trained and
+  evaluated YOLO myself.
