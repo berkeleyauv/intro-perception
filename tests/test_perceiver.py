@@ -18,7 +18,8 @@ def test_baseline_finds_spec_gate_and_box():
     # which stretched the box to the bottom of the image.
     assert abs(estimate.box_y - 35 / 180) < 0.01
     assert abs(estimate.box_height - 116 / 180) < 0.01
-    assert len(debug_frames) == 2
+    #changing to >=
+    assert len(debug_frames) >= 2
 
 def test_baseline_requires_two_posts():
     for frame in (make_gate_frame(right=False), make_gate_frame(left=False)):

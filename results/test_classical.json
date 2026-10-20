@@ -1,0 +1,26 @@
+{
+  "by_truncation": {
+    "truncated": {
+      "fps": 814.2609838353445,
+      "frames": 71,
+      "map50": 0.0,
+      "mean_center_error": null,
+      "precision_iou50": 0.0,
+      "recall_iou50": 0.0
+    },
+    "whole": {
+      "fps": 784.7304823003335,
+      "frames": 112,
+      "map50": 0.1782178217821782,
+      "mean_center_error": 0.006438586977934971,
+      "precision_iou50": 1.0,
+      "recall_iou50": 0.17391304347826086
+    }
+  },
+  "fps": 795.9297387104801,
+  "frames": 183,
+  "map50": 0.0891089108910891,
+  "mean_center_error": 0.006438586977934971,
+  "precision_iou50": 1.0,
+  "recall_iou50": 0.08571428571428572
+}
